@@ -2,6 +2,7 @@ import random
 import numpy as np
 import time
 
+
 class solution:
     def __init__(self, iter, x, T, ObjVal):
         self.iter = iter
