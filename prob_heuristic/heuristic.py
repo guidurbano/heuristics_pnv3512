@@ -40,73 +40,88 @@ m = math.ceil(df.demand.sum() / cap)
 
 df_dist = pd.read_csv(ROOT + 'distance.csv')
 
-candidates = df_dist.iloc[0].sort_values(ascending=False).index.tolist()[:m] # TODO: adicionar "e afastados entre si".
-print(f'Route first clients: {candidates}')
 
-clients = candidates.copy()  # list of forbidden clients already dealt with
-clients.append('0')
-total_demands = list(np.zeros(m))
-
-#  TODO: if not possible, repeat algorithm increasing m = m+1
-#  TODO: Repeat heuristic 1000 times and register cost value
-for num, i in enumerate(candidates):  # for every route
-    total_demand = 0
-    print(f'{num + 1} client: {i}')
-    route = ['0']  # all routes start at depot
-    route.append(i)  # each route has one candidate
-    route.append('0')  # return to depot
-    clients.append(i)  # remove from clients not in line
-
-    total_demand = total_demand + df.loc[df['number'] == i, 'demand'].values[0]
-
-    closest_clients = df_dist.loc[
-        df['number'] == i,
-        ~df_dist.columns.isin(clients)].squeeze().sort_values(
-            ascending=True).index.tolist()
-    #print(closest_clients)
-
-    print(f'route: {route}')
-
-    while (total_demand < cap) & (  # while vehicle is not full
-           len(closest_clients) != 0):  # and no more clients to attend
-        rnd_closest = np.random.choice(closest_clients[:p])  # draw one from p closest
-        closest_clients.remove(rnd_closest)
-        clients.append(rnd_closest)  # remove from clients not in line
-
-        delta_demand = df.loc[df['number'] == rnd_closest,
-                              'demand'].values[0]
-        if total_demand + delta_demand > cap:
-            break
+def cost(df_dist: pd.DataFrame,
+         route: list) -> int:
+    """Calculate cost of given route."""
+    dist = 0
+    for pre in range(0, len(route) - 1):
+        pos = pre + 1
+        if pos == len(route):
+            pass
         else:
-            total_demand = total_demand + delta_demand
+            dist = dist + df_dist.iloc[int(route[pre]), int(route[pos])]
+    return dist
 
-        # Define best insertion position
-        best_pos = 2
-        delta_dist = 10000000
-        for position in range(2, len(route) - 1):
-            delta_dist_2 = 0
-            route_eval = route.copy()
-            route_eval.insert(position, rnd_closest)
 
-            for pre in range(0, len(route_eval) - 1):  # cost function  #TODO: encapsulate
-                pos = pre + 1
-                if pos == len(route_eval):
-                    pass
-                else:
-                    delta_dist_2 = delta_dist_2 + df_dist.iloc[int(route_eval[pre]),
-                                                               int(route_eval[pos])]
-            if delta_dist_2 < delta_dist:
-                delta_dist = delta_dist_2
-                best_pos = position
+def main():
+    total_cost = 0
+    candidates = df_dist.iloc[0].sort_values(
+        ascending=False).index.tolist()[:m] # TODO: entender "e afastados entre si".
+    print(f'Route first clients: {candidates}')
 
-        route.insert(best_pos, rnd_closest)
-        # TODO: caculate route cost with function created in order todo
+    clients = candidates.copy()  # list of forbidden clients already dealt with
+    clients.append('0')
+    total_demands = list(np.zeros(m))
 
-        print(f'{rnd_closest} inserted in {best_pos} position - Demand: {total_demand}')
-        print(f'route after insertion: {route}')
-        print(f'demand after insertion: {total_demand}')
-    print(f'clients dealt with: {clients}\n')
-    total_demands[num] = total_demand
-    print('***************************************')
+    #  TODO: if not possible, repeat algorithm increasing m = m+1
+    #  TODO: Repeat heuristic 1000 times
+    for num, i in enumerate(candidates):  # for every route
+        total_demand = 0
+        print(f'{num + 1} client: {i}')
+        route = ['0', i, '0']  # all routes has one candidate, starts and ends in depot
+        clients.append(i)  # remove from clients not in line
+        clients = list(set(clients))
 
-    # TODO: not all vehicles are being used and total demand doesnt match....
+        total_demand = total_demand + df.loc[df['number'] == i,
+                                             'demand'].values[0]
+
+        closest_clients = df_dist.loc[  # Closest nodes to route
+            df['number'].isin(route),
+            ~df_dist.columns.isin(clients)].min().squeeze().sort_values(
+                ascending=True).index.tolist()
+        #print(closest_clients)
+
+        print(f'route: {route}')
+
+        while (total_demand < cap) & (  # while vehicle is not full
+               len(closest_clients) != 0):  # and no more clients to attend
+            rnd_closest = np.random.choice(closest_clients[:p])  # draw one from p closest
+            closest_clients.remove(rnd_closest)
+            clients.append(rnd_closest)  # remove from clients not in line
+
+            delta_demand = df.loc[df['number'] == rnd_closest,
+                                  'demand'].values[0]
+            if total_demand + delta_demand > cap:
+                break
+            else:
+                total_demand = total_demand + delta_demand
+
+            # Define best insertion position
+            best_pos = 2
+            dist = 10000000
+            for position in range(2, len(route) - 1):
+                route_eval = route.copy()
+                route_eval.insert(position, rnd_closest)
+                dist_2 = cost(df_dist, route_eval)
+
+                if dist_2 < dist:
+                    dist = dist_2
+                    best_pos = position
+
+            route.insert(best_pos, rnd_closest)
+
+            print(f'{rnd_closest} inserted in {best_pos} position - Demand: {total_demand}')
+            print(f'...Route: {route}')
+        print('***************************************')
+        print(f'{len(clients)} clients dealt with: {clients}\n')
+        print('***************************************')
+        total_demands[num] = total_demand
+        total_cost = total_cost + dist
+    print(f'Demands per vehicle: {total_demands}, Total = {sum(total_demands)}/{df.demand.sum()}')
+    print(f'FO: {total_cost}')
+        # TODO: total demand doesnt match demand attended.
+
+
+if __name__ == "__main__":
+    main()
