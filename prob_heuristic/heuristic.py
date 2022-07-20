@@ -3,6 +3,7 @@ import os
 import time  # TODO: report time for processing
 import math
 import pandas as pd
+import altair as vg
 
 ROOT = os.path.expanduser('~/src/heuristics_pnv3512/prob_heuristic/')
 
@@ -56,17 +57,31 @@ def cost(df_dist: pd.DataFrame,
 
 def main():
     total_cost = 0
-    candidates = df_dist.iloc[0].sort_values(
-        ascending=False).index.tolist()[:m] # TODO: entender "e afastados entre si".
-    print(f'Route first clients: {candidates}')
+    seed_nodes = []
 
-    clients = candidates.copy()  # list of forbidden clients already dealt with
+    for j in range(0, m):  # Routine to define m seeds
+        origin_dist = df_dist.iloc[0]
+        if j == 0:  # first seed is farthest node
+            new_seed = origin_dist.sort_values(
+                ascending=False).index.tolist()[0]
+        else:  # seeds maximize product of distances between each other
+            seeds_dist_prod = df_dist.loc[
+                df['number'].isin(seed_nodes),
+                ~df_dist.columns.isin(seed_nodes)].prod(axis=0)
+            prod = origin_dist.multiply(seeds_dist_prod)
+            new_seed = prod.sort_values(
+                        ascending=False).index.tolist()[0]
+        seed_nodes.append(new_seed)
+
+    print(f'Seeds: {seed_nodes}')
+
+    clients = seed_nodes.copy()  # list of forbidden clients already dealt with
     clients.append('0')
     total_demands = list(np.zeros(m))
 
     #  TODO: if not possible, repeat algorithm increasing m = m+1
     #  TODO: Repeat heuristic 1000 times
-    for num, i in enumerate(candidates):  # for every route
+    for num, i in enumerate(seed_nodes):  # for every route
         total_demand = 0
         print(f'{num + 1} client: {i}')
         route = ['0', i, '0']  # all routes has one candidate, starts and ends in depot
