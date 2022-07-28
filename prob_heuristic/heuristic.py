@@ -1,9 +1,9 @@
 import numpy as np
 import os
-import time  # TODO: report time for processing
+import time
+import matplotlib.pyplot as plt
 import math
 import pandas as pd
-import altair as vg
 
 ROOT = os.path.expanduser('~/src/heuristics_pnv3512/prob_heuristic/')
 
@@ -24,7 +24,7 @@ vel = 1  # Velocity
 p = 5  # number of size of neighborhood closest clients
 
 # Calculate how many vehicles are necessary (ceiling)
-m = math.ceil(df.demand.sum() / cap)
+m_initial = math.ceil(df.demand.sum() / cap)
 
 # Distance Matrix (discomment to generate distance matrix)
 
@@ -55,7 +55,7 @@ def cost(df_dist: pd.DataFrame,
     return dist
 
 
-def main():
+def heuristic(m):
     total_cost = 0
     seed_nodes = []
 
@@ -73,40 +73,41 @@ def main():
                         ascending=False).index.tolist()[0]
         seed_nodes.append(new_seed)
 
-    print(f'Seeds: {seed_nodes}')
+    # print(f'Seeds: {seed_nodes}')
 
     clients = seed_nodes.copy()  # list of forbidden clients already dealt with
     clients.append('0')
-    total_demands = list(np.zeros(m))
+    total_demands = []
+    routes = []
 
-    #  TODO: if not possible, repeat algorithm increasing m = m+1
-    #  TODO: Repeat heuristic 1000 times
     for num, i in enumerate(seed_nodes):  # for every route
         total_demand = 0
-        print(f'{num + 1} client: {i}')
         route = ['0', i, '0']  # all routes has one candidate, starts and ends in depot
         clients.append(i)  # remove from clients not in line
         clients = list(set(clients))
 
         total_demand = total_demand + df.loc[df['number'] == i,
-                                             'demand'].values[0]
+                                            'demand'].values[0]
 
-        closest_clients = df_dist.loc[  # Closest nodes to route
-            df['number'].isin(route),
-            ~df_dist.columns.isin(clients)].min().squeeze().sort_values(
+        # print(f'{num + 1} client: {i} - Demand: {total_demand}')
+        # print(f'route: {route}')
+
+        while (total_demand < cap):  # while vehicle is not full
+
+            closest_clients = df_dist.loc[  # Closest nodes to route
+                (df['number'].isin(route)) & (~df['number'].isin(['0'])),
+                ~df_dist.columns.isin(clients)].min().sort_values(
                 ascending=True).index.tolist()
-        #print(closest_clients)
 
-        print(f'route: {route}')
+            if len(closest_clients) == 0:
+                break
 
-        while (total_demand < cap) & (  # while vehicle is not full
-               len(closest_clients) != 0):  # and no more clients to attend
             rnd_closest = np.random.choice(closest_clients[:p])  # draw one from p closest
             closest_clients.remove(rnd_closest)
             clients.append(rnd_closest)  # remove from clients not in line
 
             delta_demand = df.loc[df['number'] == rnd_closest,
-                                  'demand'].values[0]
+                                'demand'].values[0]
             if total_demand + delta_demand > cap:
                 break
             else:
@@ -126,16 +127,52 @@ def main():
 
             route.insert(best_pos, rnd_closest)
 
-            print(f'{rnd_closest} inserted in {best_pos} position - Demand: {total_demand}')
-            print(f'...Route: {route}')
-        print('***************************************')
-        print(f'{len(clients)} clients dealt with: {clients}\n')
-        print('***************************************')
-        total_demands[num] = total_demand
+        #     print(f'{rnd_closest} inserted in {best_pos} position - Demand: {total_demand}')
+        #     print(f'...Route: {route}')
+        # print(f'Route demand: {total_demand}')
+        # print('***************************************')
+        # print(f'{len(clients)} clients dealt with: {clients}\n')
+        # print('***************************************')
+        total_demands.append(total_demand)
         total_cost = total_cost + dist
-    print(f'Demands per vehicle: {total_demands}, Total = {sum(total_demands)}/{df.demand.sum()}')
-    print(f'FO: {total_cost}')
-        # TODO: total demand doesnt match demand attended.
+        routes.append(route)
+    # print(f'Demands per vehicle: {total_demands}, Total = {sum(total_demands)}/{df.demand.sum()}')
+    # print(f'FO: {total_cost}')
+
+    if len(clients) == df.shape[0]:
+        return ('success', total_cost, routes)
+    else:
+        return ('fail', total_cost, routes)
+
+
+def main():
+    costs = []
+    routes = []
+    start = time.time()
+    for it in range(0, 1000):
+        print(f'Progress {(it+1)}/1000')
+        all_clients_satisfied = False
+        m = m_initial
+        while all_clients_satisfied is False:
+            heuristic_m = heuristic(m=m)
+            if heuristic_m[0] == 'fail':
+                m = m + 1
+                pass
+            if heuristic_m[0] == 'success':
+                all_clients_satisfied = True
+
+        costs.append(heuristic_m[1])
+        routes.append(heuristic_m[2])
+
+        end = time.time()
+    print(f'Processing Time: {end-start}')
+
+    print(f'Routes of best solution: {routes[np.argmin(costs)]}')
+
+    # Objective Function stats
+    print(f'Obj Function: Min:{np.min(costs)}, Mean: {np.mean(costs)}, Max: {np.max(costs)}')
+
+    pd.DataFrame([costs]).apply(int).to_csv(ROOT + 'results_costs.csv')
 
 
 if __name__ == "__main__":
